@@ -16,7 +16,7 @@ The plugin sits on a MIDI track. Hoarder must be open. A link control turns blue
 | Transport | If the DAW is playing or recording, the preview follows the metronome. |
 | Key | You pick the project key in the app. Samples that have a key are transposed. The plugin does not detect the key. |
 | Pitch | Manual semitone shift, as well as the key match. |
-| Time | 1x, 1/2x, or 2x. |
+| Time | Matched to the project tempo. |
 | Loops | Repeat until you stop them. |
 | One-shots | Play once. Note repeat retriggers them from every 16th note out to every 4 bars. |
 | Drag | The original sample. Pitch and time changes do not ride along. |
@@ -33,12 +33,11 @@ Link replaces that tempo source while it is connected. The saved-set BPM remains
 
 ## Target behavior
 
-Load Hoarder Link on a MIDI track. Hoarder shows a link control. Blue means a plugin is connected.
+Load Hoarder Link on a MIDI track. Hoarder shows a link mark. Green means a plugin is connected.
 
 - The header tempo is the host tempo, including changes that are not saved yet.
 - Play still uses Hoarder's To key. Relative keys do not move, same as today. There is no audio key detector.
-- A stretch control offers 1x, 1/2x, and 2x on top of the tempo match.
-- With the transport stopped, a preview starts when you click it and plays at the project tempo.
+- With the transport stopped, a click still starts the preview. Stopping the transport stops it.
 - With the transport running, a loop locks to the beat grid.
 - Loops repeat until you stop them or pick another sample.
 - One-shots play once unless note repeat is on. Repeat rates are 1/16, 1/8, 1/4, 1/2, 1 bar, 2 bars, and 4 bars.
@@ -63,7 +62,7 @@ Hoarder (existing app, port 8770 for the UI)
     link state, host tempo, stretch, and note repeat live in the page
 ```
 
-The plugin does not stretch. Hoarder renders a WAV at the chosen pitch and at the tempo ratio, including 1/2x or 2x. The plugin loads that file on the message thread and plays it from the audio callback. Loop position while the transport is running comes from the host PPQ, not from a free-running playhead.
+The plugin does not stretch. Hoarder renders a WAV at the chosen pitch and at the project tempo. The plugin loads that file on the message thread and plays it from the audio callback. Loop position while the transport is running comes from the host PPQ, not from a free-running playhead.
 
 The audio callback never opens a socket and never reads the file. Host state is stored in atomics and posted to Hoarder about 20 times a second.
 
@@ -82,6 +81,8 @@ Hoarder to plugin:
 - `clear` when the link is disconnected from the page
 
 Paths stay on the same machine. The socket accepts only `127.0.0.1`.
+
+`python standin.py` is the stand-in for that socket. Hoarder must already be running. It sends `hello` and `host` about 20 times a second, prints each host line, and checks that a `preview` path is a WAV. `--until-preview` exits after the first good preview. It does not play audio.
 
 ## Platforms
 
@@ -110,7 +111,18 @@ In hoarder:
 - Route preview to the plugin while the link is on
 - Host tempo on the existing project readout
 - Stretch control and note repeat
-- Copy modified, and original-file drag while linked
+- Copy modified, and original-file drag while linked. Windows clipboard is in. The macOS clipboard is still to do.
+
+## Build the plugin
+
+The VST3 connects to Hoarder, reports the host tempo, and plays the preview Hoarder renders. Loops follow the host beat grid while the transport is running. One-shots play once, or retrigger at the repeat rate. Repeat and key are chosen in Hoarder.
+
+```powershell
+cmake -S . -B build
+cmake --build build --config Release
+```
+
+The build copies `Hoarder Link.vst3` to `%LOCALAPPDATA%\Programs\Common\VST3` on Windows, and to `~/Library/Audio/Plug-Ins/VST3` on macOS. In Ableton, Preferences, Plug-Ins, enable the VST3 system folders and rescan. Load Hoarder Link on a MIDI track while Hoarder is open. The link button turns blue, and the header tempo follows the open set.
 
 ## Build order
 
@@ -119,7 +131,7 @@ In hoarder:
 3. **Playback, transport stopped.** Clicking a sample plays the rendered WAV through the plugin at the project tempo.
 4. **Grid lock.** With the transport running, a loop starts on the beat and holds tempo changes.
 5. **Repeats and stretch.** One-shot repeat rates, and 1/2x and 2x.
-6. **Clipboard and drag.** Copy modified on Windows and macOS. Linked drag passes the original path.
+6. **Clipboard and drag.** Windows puts the modified WAV on the clipboard, and a linked drag passes the original file. The macOS clipboard is still open.
 7. **Mac and install.** AU plus VST3 from CI, user-folder install, then signing and notarization.
 
 ## Out of scope
